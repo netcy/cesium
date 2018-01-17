@@ -1,10 +1,26 @@
-fdefineSuite([
+defineSuite([
         'Scene/CesiumIon',
         'Core/Resource',
+        'Scene/ArcGisMapServerImageryProvider',
+        'Scene/BingMapsImageryProvider',
+        'Scene/GoogleEarthEnterpriseMapsProvider',
+        'Scene/MapboxImageryProvider',
+        'Scene/SingleTileImageryProvider',
+        'Scene/UrlTemplateImageryProvider',
+        'Scene/WebMapServiceImageryProvider',
+        'Scene/WebMapTileServiceImageryProvider',
         'ThirdParty/when'
     ], function(
         CesiumIon,
         Resource,
+        ArcGisMapServerImageryProvider,
+        BingMapsImageryProvider,
+        GoogleEarthEnterpriseMapsProvider,
+        MapboxImageryProvider,
+        SingleTileImageryProvider,
+        UrlTemplateImageryProvider,
+        WebMapServiceImageryProvider,
+        WebMapTileServiceImageryProvider,
         when) {
     'use strict';
 
@@ -63,7 +79,7 @@ fdefineSuite([
             });
     });
 
-    fdescribe('CesiumIonResource', function() {
+    describe('CesiumIonResource', function() {
         it('constructs with expected values', function() {
             spyOn(Resource, 'call').and.callThrough();
 
@@ -82,6 +98,45 @@ fdefineSuite([
             var cloned = resource.clone();
             expect(cloned).toEqual(resource);
             expect(cloned).not.toBe(resource);
+        });
+
+        it('create creates the expected resource', function() {
+            var endpointResource = new Resource({ url: 'https://api.test.invalid', access_token: 'not_the_token' });
+            var resource = CesiumIon._CesiumIonResource.create(endpoint, endpointResource);
+            expect(resource.getUrlComponent()).toEqual('https://assets.cesium.com/123890213');
+            expect(resource.queryParameters).toEqual({ access_token: 'not_really_a_refresh_token' });
+            expect(resource.ionData.endpoint).toBe(endpoint);
+            expect(resource.ionData._endpointResource).toEqual(endpointResource);
+            expect(resource.retryCallback).toBeDefined();
+            expect(resource.retryAttempts).toBe(1);
+        });
+
+        function testImageryAsset(endpoint, ImageryClass) {
+            var resourceOptions = { url: 'https://test.invalid' };
+            var endpointResource = new Resource({ url: 'https://api.test.invalid' });
+            var resource = new CesiumIon._CesiumIonResource(resourceOptions, endpoint, endpointResource);
+            var imageryProvider = resource.createImageryProvider();
+            expect(imageryProvider).toBeInstanceOf(ImageryClass);
+        }
+
+        it('createImageryProvider works', function() {
+            testImageryAsset({ type: 'IMAGERY' }, UrlTemplateImageryProvider);
+            testImageryAsset({ type: 'ARCGIS_MAPSERVER', url: '' }, ArcGisMapServerImageryProvider);
+            testImageryAsset({ type: 'BING', url: '' }, BingMapsImageryProvider);
+            testImageryAsset({ type: 'GOOGLE_EARTH', url: '', channel: 1 }, GoogleEarthEnterpriseMapsProvider);
+            testImageryAsset({ type: 'MAPBOX', mapId: 1 }, MapboxImageryProvider);
+            testImageryAsset({ type: 'SINGLE_TILE', url: '' }, SingleTileImageryProvider);
+            testImageryAsset({ type: 'TMS', url: '' }, UrlTemplateImageryProvider);
+            testImageryAsset({ type: 'URL_TEMPLATE', url: '' }, UrlTemplateImageryProvider);
+            testImageryAsset({ type: 'WMS', url: '', layers: [] }, WebMapServiceImageryProvider);
+            testImageryAsset({ type: 'WMTS', url: '', layer: '', style: '', tileMatrixSetID: 1 }, WebMapTileServiceImageryProvider);
+        });
+
+        it('createImageryProvider throws with unknown asset type', function() {
+            var resourceOptions = { url: 'https://test.invalid' };
+            var endpointResource = new Resource({ url: 'https://api.test.invalid' });
+            var resource = new CesiumIon._CesiumIonResource(resourceOptions, { type: 'ADSASDS' }, endpointResource);
+            expect(function() { resource.createImageryProvider(); }).toThrowRuntimeError();
         });
     });
 });

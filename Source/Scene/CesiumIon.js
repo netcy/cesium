@@ -214,7 +214,6 @@ define([
     // These values are the unofficial list of supported external imagery
     // assets in the Cesium Ion beta. They are subject to change.
     var ImageryProviderMapping = {
-        IMAGERY: createTileMapServiceImageryProvider,
         ARCGIS_MAPSERVER: createFactory(ArcGisMapServerImageryProvider),
         BING: createFactory(BingMapsImageryProvider),
         GOOGLE_EARTH: createFactory(GoogleEarthEnterpriseMapsProvider),
@@ -228,13 +227,17 @@ define([
 
     CesiumIonResource.prototype.createImageryProvider = function () {
         var type = this.ionData.endpoint.type;
+        if (type === 'IMAGERY') {
+            return createTileMapServiceImageryProvider({ url: this });
+        }
+
         var factory = ImageryProviderMapping[type];
 
         if (!defined(factory)) {
             throw new RuntimeError('Unrecognized Cesium Ion imagery type: ' + type);
         }
 
-        return factory({ url: this });
+        return factory(this.ionData.endpoint);
     };
 
     //Exposed for testing
