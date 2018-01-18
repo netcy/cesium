@@ -13,7 +13,8 @@ define([
         '../Scene/SingleTileImageryProvider',
         '../Scene/UrlTemplateImageryProvider',
         '../Scene/WebMapServiceImageryProvider',
-        '../Scene/WebMapTileServiceImageryProvider'
+        '../Scene/WebMapTileServiceImageryProvider',
+        '../ThirdParty/when'
     ], function(
         Check,
         defaultValue,
@@ -29,7 +30,8 @@ define([
         SingleTileImageryProvider,
         UrlTemplateImageryProvider,
         WebMapServiceImageryProvider,
-        WebMapTileServiceImageryProvider) {
+        WebMapTileServiceImageryProvider,
+        when) {
     'use strict';
 
     /**
@@ -78,7 +80,7 @@ define([
      * //Load an ImageryProvider with asset ID of 2347923
      * var imageryProvider = Cesium.createTileMapServiceImageryProvider({url : new Cesium.CesiumIon.createImageryProvider(2347923) });
      */
-    CesiumIon.createResource = function (assetId, options) {
+    CesiumIon.createResource = function(assetId, options) {
         Check.defined('assetId', assetId);
 
         options = defaultValue(options, defaultValue.EMPTY_OBJECT);
@@ -95,7 +97,7 @@ define([
 
         var endpointResource = new Resource(resourceOptions);
         return CesiumIon._loadJson(endpointResource)
-            .then(function (endpoint) {
+            .then(function(endpoint) {
                 return CesiumIonResource.create(endpoint, endpointResource);
             });
     };
@@ -113,9 +115,9 @@ define([
      *
      * @experimental CesiumIon.createImageryProvider is part of Cesium Ion beta functionality and may change without our normal deprecation policy.
      */
-    CesiumIon.createImageryProvider = function (assetId, options) {
+    CesiumIon.createImageryProvider = function(assetId, options) {
         return CesiumIon.createResource(assetId, options)
-            .then(function (resource) {
+            .then(function(resource) {
                 return resource.createImageryProvider();
             });
     };
@@ -134,7 +136,7 @@ define([
         };
     }
 
-    CesiumIonResource.create = function (endpoint, endpointResource) {
+    CesiumIonResource.create = function(endpoint, endpointResource) {
         var options = {
             url: endpoint.url,
             retryCallback: createRetryCallback(endpoint, endpointResource),
@@ -153,7 +155,7 @@ define([
         CesiumIonResource.prototype.constructor = CesiumIonResource;
     }
 
-    CesiumIonResource.prototype.clone = function (result) {
+    CesiumIonResource.prototype.clone = function(result) {
         if (!defined(result)) {
             result = new CesiumIonResource({
                 url: this._url
@@ -165,11 +167,11 @@ define([
     };
 
     function createRetryCallback(endpoint, endpointResource) {
-        return function (that, error) {
+        return function(that, error) {
             // We only want to retry in the case of invalid credentials (401) or image
             // requests(since Image failures can not provide a status code)
             if (!defined(error) || (error.statusCode !== 401 && !(error.target instanceof Image))) {
-                return false;
+                return when.resolve(false);
             }
 
             var ionData = that.ionData;
@@ -179,14 +181,13 @@ define([
             // asset, we wait on the same promise.
             var pendingPromise = ionData._pendingPromise;
             if (!defined(pendingPromise)) {
-                var accessToken;
                 pendingPromise = CesiumIon._loadJson(endpointResource)
-                    .then(function (endpoint) {
+                    .then(function(endpoint) {
                         //Set the token for root resource that this (and other) resources were derived
                         ionData._root.queryParameters.access_token = endpoint.accessToken;
-                        return accessToken;
+                        return endpoint.accessToken;
                     })
-                    .always(function () {
+                    .always(function(accessToken) {
                         // Pass or fail, we're done with this promise, the next failure should use a new one.
                         ionData._pendingPromise = undefined;
 
@@ -197,16 +198,16 @@ define([
                 ionData._pendingPromise = pendingPromise;
             }
 
-            return pendingPromise.then(function (accessToken) {
+            return pendingPromise.then(function(accessToken) {
                 // Set the new token for this resource
-                that.queryParameters.access_token = endpoint.accessToken;
+                that.queryParameters.access_token = accessToken;
                 return true;
             });
         };
     }
 
     function createFactory(Type) {
-        return function (options) {
+        return function(options) {
             return new Type(options);
         };
     }
@@ -225,7 +226,7 @@ define([
         WMTS: createFactory(WebMapTileServiceImageryProvider)
     };
 
-    CesiumIonResource.prototype.createImageryProvider = function () {
+    CesiumIonResource.prototype.createImageryProvider = function() {
         var type = this.ionData.endpoint.type;
         if (type === 'IMAGERY') {
             return createTileMapServiceImageryProvider({ url: this });
@@ -243,6 +244,7 @@ define([
     //Exposed for testing
     CesiumIon._CesiumIonResource = CesiumIonResource;
     CesiumIon._loadJson = loadJson;
+    CesiumIon._createRetryCallback = createRetryCallback;
 
     return CesiumIon;
 });

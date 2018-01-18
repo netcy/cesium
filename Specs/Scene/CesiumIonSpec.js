@@ -1,5 +1,6 @@
 defineSuite([
         'Scene/CesiumIon',
+        'Core/RequestErrorEvent',
         'Core/Resource',
         'Scene/ArcGisMapServerImageryProvider',
         'Scene/BingMapsImageryProvider',
@@ -12,6 +13,7 @@ defineSuite([
         'ThirdParty/when'
     ], function(
         CesiumIon,
+        RequestErrorEvent,
         Resource,
         ArcGisMapServerImageryProvider,
         BingMapsImageryProvider,
@@ -137,6 +139,63 @@ defineSuite([
             var endpointResource = new Resource({ url: 'https://api.test.invalid' });
             var resource = new CesiumIon._CesiumIonResource(resourceOptions, { type: 'ADSASDS' }, endpointResource);
             expect(function() { resource.createImageryProvider(); }).toThrowRuntimeError();
+        });
+    });
+
+    describe('retryCallback', function() {
+        var endpointResource = new Resource({ url: 'https://api.test.invalid', access_token: 'not_the_token' });
+        var resource = CesiumIon._CesiumIonResource.create(endpoint, endpointResource);
+        var retryCallback = CesiumIon._createRetryCallback(endpoint, endpointResource);
+
+        it('returns false when error is undefined', function() {
+            return retryCallback(resource, undefined).then(function(result) {
+                expect(result).toBe(false);
+            });
+        });
+
+        it('returns false when error is non-401', function() {
+            var error = new RequestErrorEvent(404);
+            return retryCallback(resource, error).then(function(result) {
+                expect(result).toBe(false);
+            });
+        });
+
+        it('returns false when error is event with non-Image target', function() {
+            var event = { target: {} };
+            return retryCallback(resource, event).then(function(result) {
+                expect(result).toBe(false);
+            });
+        });
+
+        function testCallback(resource, event) {
+            var deferred = when.defer();
+            spyOn(CesiumIon, '_loadJson').and.returnValue(deferred.promise);
+
+            var newEndpoint = {
+                type: '3DTILES',
+                url: 'https://assets.cesium.com/' + assetId,
+                accessToken: 'not_not_really_a_refresh_token'
+            };
+
+            retryCallback(resource, event).then(function(result) {
+                expect(resource.ionData._pendingPromise).toBeUndefined();
+                expect(resource.queryParameters.access_token).toEqual(newEndpoint.accessToken);
+                expect(result).toBe(true);
+            });
+
+            expect(CesiumIon._loadJson).toHaveBeenCalledWith(endpointResource);
+            expect(resource.ionData._pendingPromise).toBeDefined();
+            deferred.resolve(newEndpoint);
+        }
+
+        it('works when error is a 401', function() {
+            var error = new RequestErrorEvent(401);
+            return testCallback(resource, error);
+        });
+
+        it('works when error is event with Image target', function() {
+            var event = { target: new Image() };
+            return testCallback(resource, event);
         });
     });
 });
