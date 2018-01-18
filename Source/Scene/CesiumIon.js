@@ -1,5 +1,7 @@
 define([
+        '../Core/CesiumTerrainProvider',
         '../Core/Check',
+        '../Core/clone',
         '../Core/defaultValue',
         '../Core/defined',
         '../Core/loadJson',
@@ -7,6 +9,7 @@ define([
         '../Core/RuntimeError',
         '../Scene/ArcGisMapServerImageryProvider',
         '../Scene/BingMapsImageryProvider',
+        '../Scene/Cesium3DTileset',
         '../Scene/createTileMapServiceImageryProvider',
         '../Scene/GoogleEarthEnterpriseMapsProvider',
         '../Scene/MapboxImageryProvider',
@@ -16,7 +19,9 @@ define([
         '../Scene/WebMapTileServiceImageryProvider',
         '../ThirdParty/when'
     ], function(
+        CesiumTerrainProvider,
         Check,
+        clone,
         defaultValue,
         defined,
         loadJson,
@@ -24,6 +29,7 @@ define([
         RuntimeError,
         ArcGisMapServerImageryProvider,
         BingMapsImageryProvider,
+        Cesium3DTileset,
         createTileMapServiceImageryProvider,
         GoogleEarthEnterpriseMapsProvider,
         MapboxImageryProvider,
@@ -103,6 +109,48 @@ define([
     };
 
     /**
+     * Creates a {@link Cesium3DTileset} representing a Cesium Ion 3D Tiles asset.
+     * Unlike {@link CesiumIon.createResource}, this function supports beta external asset
+     * functionality.
+     *
+     * @param {Number} assetId The Cesium Ion asset id.
+     * @param {Object} [options] An object with the following properties:
+     * @param {String} [options.accessToken=CesiumIon.defaultAccessToken] The access token to use.
+     * @param {String} [options.serverUrl=CesiumIon.defaultServerUrl] The url to the Cesium Ion API server.
+     * @param {String} [options.tilesetOptions] Any options to be passed to the {@link Cesium3DTileset} constructor.
+     * @returns {Promise<Cesium3DTileset>} A promise to a tileset representing the requested Cesium Ion Asset.
+     *
+     * @experimental CesiumIon.create3DTileset is part of Cesium Ion beta functionality and may change without our normal deprecation policy.
+     */
+    CesiumIon.create3DTileset = function(assetId, options) {
+        return CesiumIon.createResource(assetId, options)
+            .then(function(resource) {
+                return resource.create3DTileset(options.tilesetOptions);
+            });
+    };
+
+    /**
+     * Creates a {@link CesiumTerrainProvider} representing a Cesium Ion terrain asset.
+     * Unlike {@link CesiumIon.createResource}, this function supports beta external asset
+     * functionality.
+     *
+     * @param {Number} assetId The Cesium Ion asset id.
+     * @param {Object} [options] An object with the following properties:
+     * @param {String} [options.accessToken=CesiumIon.defaultAccessToken] The access token to use.
+     * @param {String} [options.serverUrl=CesiumIon.defaultServerUrl] The url to the Cesium Ion API server.
+     * @param {String} [options.terrainOptions] Any options to be passed to the {@link CesiumTerrainProvider} constructor.
+     * @returns {Promise<CesiumTerrainProvider>} A promise to a terrain provider representing the requested Cesium Ion Asset.
+     *
+     * @experimental CesiumIon.createTerrainProvider is part of Cesium Ion beta functionality and may change without our normal deprecation policy.
+     */
+    CesiumIon.createTerrainProvider = function(assetId, options) {
+        return CesiumIon.createResource(assetId, options)
+            .then(function(resource) {
+                return resource.create3DTileset(options.terrainOptions);
+            });
+    };
+
+    /**
      * Creates an {@link ImageryProvider} representing a Cesium Ion imagery asset.
      * Unlike {@link CesiumIon.createResource}, this function supports beta external asset
      * functionality.
@@ -111,7 +159,7 @@ define([
      * @param {Object} [options] An object with the following properties:
      * @param {String} [options.accessToken=CesiumIon.defaultAccessToken] The access token to use.
      * @param {String} [options.serverUrl=CesiumIon.defaultServerUrl] The url to the Cesium Ion API server.
-     * @returns {Promise<ImageryProvider>} A promise to an imagery provider presenting the requested Cesium Ion Asset.
+     * @returns {Promise<ImageryProvider>} A promise to an imagery provider representing the requested Cesium Ion Asset.
      *
      * @experimental CesiumIon.createImageryProvider is part of Cesium Ion beta functionality and may change without our normal deprecation policy.
      */
@@ -224,6 +272,32 @@ define([
         URL_TEMPLATE: createFactory(UrlTemplateImageryProvider),
         WMS: createFactory(WebMapServiceImageryProvider),
         WMTS: createFactory(WebMapTileServiceImageryProvider)
+    };
+
+    CesiumIonResource.prototype.create3DTileset = function(options) {
+        var type = this.ionData.endpoint.type;
+        if (type !== '3DTILES') {
+            throw new RuntimeError('Cesium Ion asset is not a 3D Tiles tileset.');
+        }
+
+        options = defaultValue(options, defaultValue.EMPTY_OBJECT);
+        options = clone(options);
+        options.url = this;
+
+        return new Cesium3DTileset(options);
+    };
+
+    CesiumIonResource.prototype.createTerrainProvider = function(options) {
+        var type = this.ionData.endpoint.type;
+        if (type !== 'TERRAIN' || type !== 'STK_TERRAIN_SERVER') {
+            throw new RuntimeError('Cesium Ion asset is not a terrain.');
+        }
+
+        options = defaultValue(options, defaultValue.EMPTY_OBJECT);
+        options = clone(options);
+        options.url = this;
+
+        return new CesiumTerrainProvider(options);
     };
 
     CesiumIonResource.prototype.createImageryProvider = function() {
